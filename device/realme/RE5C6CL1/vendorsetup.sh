@@ -1,0 +1,3 @@
+#!/bin/bash
+
+add_lunch_combo twrp_RE5C6CL1-eng
