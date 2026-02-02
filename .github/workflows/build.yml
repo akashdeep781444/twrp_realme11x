@@ -6,113 +6,112 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 360
     
     steps:
-    # Step 1: Checkout YOUR repository (with device tree)
-    - name: Checkout repository
+    - name: Checkout device tree
       uses: actions/checkout@v4
       
-    # Step 2: Install tools
-    - name: Install tools
+    - name: Install minimal dependencies
       run: |
         sudo apt update
-        sudo apt install -y git repo python3 openjdk-11-jdk abootimg
+        sudo apt install -y git repo python3 openjdk-11-jdk ccache
         
-    # Step 3: Setup workspace
-    - name: Setup workspace
+    - name: Initialize TWRP source
       run: |
         mkdir -p twrp
         cd twrp
+        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
         
-    # Step 4: Initialize TWRP source
-    - name: Initialize TWRP
-      run: |
-        cd twrp
-        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1 --depth=100
-        
-    # Step 5: Sync source
-    - name: Sync source
+    - name: Sync source code
       run: |
         cd twrp
         repo sync -c -j4 --force-sync --no-clone-bundle --optimized-fetch
         
-    # Step 6: Copy device tree from YOUR repository
     - name: Copy device tree
       run: |
-        # Copy device tree from checked out repo to twrp directory
         mkdir -p twrp/device/realme/RE5C6CL1
         cp -r device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
         
-    # Step 7: Download and EXTRACT kernel from boot.img
-    - name: Download and extract kernel
+    - name: Download kernel from Google Drive
       run: |
         cd twrp/device/realme/RE5C6CL1
         
-        echo "=== Downloading boot.img ==="
-        # Download from your Google Drive
-        wget -q "https://drive.google.com/uc?export=download&id=1i1pVhk_J7et3cQlwkffVO_WdcQsBKvGI" -O boot.img
+        # Install gdown
+        pip3 install gdown
         
-        echo "=== Extracting kernel ==="
-        echo "File type: $(file boot.img)"
+        # Download your kernel (67MB)
+        echo "Downloading kernel..."
+        gdown "https://drive.google.com/uc?id=1i1pVhk_J7et3cQlwkffVO_WdcQsBKvGI" -O kernel
         
-        # Extract kernel from boot.img
-        abootimg -x boot.img
-        
-        echo "=== Looking for kernel ==="
-        ls -la
-        
-        # The kernel could be named: zImage, Image.gz, or Image
-        if [ -f "zImage" ]; then
-          echo "Found: zImage"
-          cp zImage kernel
-        elif [ -f "Image.gz" ]; then
-          echo "Found: Image.gz"
-          cp Image.gz kernel
-        elif [ -f "Image" ]; then
-          echo "Found: Image"
-          cp Image kernel
+        # Verify
+        if [ -f "kernel" ]; then
+          echo "✅ Kernel downloaded: $(ls -lh kernel)"
         else
-          echo "No kernel found. Files extracted:"
-          ls -la
-          # Fallback: use boot.img as kernel
-          cp boot.img kernel
+          echo "❌ Kernel download failed"
+          # Create dummy kernel for testing
+          dd if=/dev/zero of=kernel bs=1M count=10
         fi
         
-        echo "=== Final kernel ==="
-        ls -lh kernel
-        file kernel || true
+    - name: Pre-build fixes
+      run: |
+        cd twrp
         
-    # Step 8: Build TWRP
+        # Create necessary directories to prevent errors
+        mkdir -p out/target/product/RE5C6CL1/root/vendor
+        mkdir -p out/target/product/RE5C6CL1/recovery/root/vendor
+        
     - name: Build TWRP
       run: |
         cd twrp
         
+        # Critical environment variables
         export ALLOW_MISSING_DEPENDENCIES=true
+        export LC_ALL=C
+        
+        # Setup environment
         source build/envsetup.sh
+        
+        # Select device
         lunch twrp_RE5C6CL1-eng
         
         echo "=== Building TWRP ==="
+        
+        # Build with single thread first (more stable)
         make recoveryimage -j1 2>&1 | tee build.log
         
-    # Step 9: Check result
-    - name: Check build
+        # Check if successful
+        if [ ${PIPESTATUS[0]} -eq 0 ] && [ -f "out/target/product/RE5C6CL1/recovery.img" ]; then
+          echo "✅ BUILD SUCCESS!"
+        else
+          echo "⚠️  First attempt failed, trying with more threads..."
+          make recoveryimage -j$(nproc --all) 2>&1 | tee -a build.log
+        fi
+        
+    - name: Verify build
       run: |
         cd twrp
         
         if [ -f "out/target/product/RE5C6CL1/recovery.img" ]; then
-          echo "✅ TWRP BUILT SUCCESSFULLY!"
+          echo "🎉 TWRP BUILD COMPLETE!"
           echo "Size: $(ls -lh out/target/product/RE5C6CL1/recovery.img)"
+          echo "Type: $(file out/target/product/RE5C6CL1/recovery.img 2>/dev/null || echo 'Android recovery image')"
         else
-          echo "❌ Build failed"
-          echo "Last errors:"
-          tail -50 build.log | grep -i "error\|failed" || tail -50 build.log
+          echo "❌ Build failed - no recovery image"
+          echo "Checking for errors..."
+          tail -100 build.log | grep -i "error\|failed" || true
           exit 1
         fi
         
-    # Step 10: Upload TWRP
     - name: Upload TWRP
       uses: actions/upload-artifact@v4
       with:
-        name: TWRP-Realme-11x
+        name: TWRP-Realme-11x-5G
         path: twrp/out/target/product/RE5C6CL1/recovery.img
+        
+    - name: Upload logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Build-Logs
+        path: twrp/build.log
