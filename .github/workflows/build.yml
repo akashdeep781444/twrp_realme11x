@@ -42,7 +42,7 @@ jobs:
         
         # Download your kernel (67MB)
         echo "Downloading kernel..."
-        gdown "https://drive.google.com/uc?id=1i1pVhk_J7et3cQlwkffVO_WdcQsBKvGI" -O kernel
+        gdown "https://drive.google.com/uc?id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O kernel
         
         # Verify
         if [ -f "kernel" ]; then
@@ -78,7 +78,7 @@ jobs:
         echo "=== Building TWRP ==="
         
         # Build with single thread first (more stable)
-        make recoveryimage -j1 2>&1 | tee build.log
+        make vendorbootimage -j1 2>&1 | tee build.log
         
         # Check if successful
         if [ ${PIPESTATUS[0]} -eq 0 ] && [ -f "out/target/product/RE5C6CL1/recovery.img" ]; then
