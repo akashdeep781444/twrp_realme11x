@@ -1,4 +1,4 @@
-name: Build TWRP vendor_boot for Realme 11x 5G
+name: Build TWRP vendor_boot
 
 on:
   workflow_dispatch:
@@ -6,109 +6,51 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360
 
     steps:
-    # =====================================================
-    # Checkout device tree repository
-    # =====================================================
-    - name: Checkout device tree
+    - name: Checkout repo
       uses: actions/checkout@v4
 
-    # =====================================================
-    # Install build dependencies
-    # =====================================================
     - name: Install dependencies
       run: |
         sudo apt update
         sudo apt install -y \
-          git repo python3 python3-pip \
-          openjdk-11-jdk \
-          bc bison build-essential \
-          curl flex g++-multilib gcc-multilib \
-          gnupg gperf imagemagick \
-          lib32ncurses5-dev lib32readline-dev \
-          lib32z1-dev liblz4-tool libncurses5 \
-          libncurses5-dev libsdl1.2-dev \
-          libssl-dev libxml2 libxml2-utils \
-          lzop pngcrush rsync schedtool \
-          squashfs-tools xsltproc zip zlib1g-dev \
-          ccache
+          git-core gnupg flex bison gperf build-essential \
+          zip curl zlib1g-dev gcc-multilib g++-multilib \
+          libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev \
+          libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
+          xsltproc unzip fontconfig python3 python-is-python3 \
+          bc ccache libssl-dev
 
-    # =====================================================
-    # Initialize TWRP source (Android 12 base)
-    # =====================================================
-    - name: Initialize TWRP source
+    - name: Set up repo tool
       run: |
-        mkdir -p twrp
-        cd twrp
-        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod +x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
 
-    # =====================================================
-    # Sync source code
-    # =====================================================
-    - name: Sync source
+    - name: Init TWRP source
       run: |
-        cd twrp
-        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --optimized-fetch
+        repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+          -b twrp-14.1 --depth=1
+        repo sync -c --no-clone-bundle --no-tags -j$(nproc)
 
-    # =====================================================
-    # Copy device tree
-    # =====================================================
-    - name: Copy device tree
+    - name: Clone device tree
       run: |
-        mkdir -p twrp/device/realme/RE5C6CL1
-        cp -r device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
+        mkdir -p device/realme
+        git clone https://github.com/akashdeep781444/twrp_realme11x.git device/realme/RE5C6CL1
 
-    # =====================================================
-    # Download prebuilt kernel
-    # =====================================================
-    - name: Download kernel
-      run: |
-        cd twrp/device/realme/RE5C6CL1
-        pip3 install --user gdown
-
-        echo "Downloading kernel..."
-        gdown "https://drive.google.com/uc?id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O kernel
-
-        if [ ! -s kernel ]; then
-          echo "❌ Kernel download failed or empty"
-          exit 1
-        fi
-
-        chmod +x kernel
-        ls -lh kernel
-
-    # =====================================================
-    # Build TWRP vendor_boot (Android 14)
-    # =====================================================
     - name: Build vendor_boot
       run: |
-        cd twrp
-
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export LC_ALL=C
-
         source build/envsetup.sh
         lunch twrp_RE5C6CL1-eng
+        mka vendorbootimage
 
-        echo "=== Building TWRP vendor_boot (Android 14) ==="
-        make vendorbootimage -j$(nproc --all) 2>&1 | tee build.log
-
-        if [ ! -f "out/target/product/RE5C6CL1/vendor_boot.img" ]; then
-          echo "❌ vendor_boot.img not generated"
-          exit 1
-        fi
-
-        echo "✅ vendor_boot.img built successfully"
-        ls -lh out/target/product/RE5C6CL1/vendor_boot.img
-
-    # =====================================================
-    # Verify output
-    # =====================================================
-    - name: Verify vendor_boot
-      run: |
-        cd twrp
+    - name: Upload vendor_boot.img
+      uses: actions/upload-artifact@v4
+      with:
+        name: vendor_boot_RE5C6CL1
+        path: out/target/product/RE5C6CL1/vendor_boot.img        cd twrp
 
         file out/target/product/RE5C6CL1/vendor_boot.img || true
 
