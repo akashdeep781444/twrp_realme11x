@@ -1,0 +1,6 @@
+on early-init
+    mkdir /metadata 0771 system system
+    mkdir /mnt/vendor 0755 root root
+
+on init
+    mount_all /vendor/etc/fstab.mt6835
