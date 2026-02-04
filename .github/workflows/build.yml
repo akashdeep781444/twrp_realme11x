@@ -1,4 +1,4 @@
-name: Build TWRP for Realme 11x 5G
+name: Build TWRP vendor_boot for Realme 11x 5G
 
 on:
   workflow_dispatch:
@@ -7,109 +7,127 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
-    
+
     steps:
+    # =====================================================
+    # Checkout device tree repository
+    # =====================================================
     - name: Checkout device tree
       uses: actions/checkout@v4
-      
-    - name: Install minimal dependencies
+
+    # =====================================================
+    # Install build dependencies
+    # =====================================================
+    - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y git repo python3 openjdk-11-jdk ccache
-        
+        sudo apt install -y \
+          git repo python3 python3-pip \
+          openjdk-11-jdk \
+          bc bison build-essential \
+          curl flex g++-multilib gcc-multilib \
+          gnupg gperf imagemagick \
+          lib32ncurses5-dev lib32readline-dev \
+          lib32z1-dev liblz4-tool libncurses5 \
+          libncurses5-dev libsdl1.2-dev \
+          libssl-dev libxml2 libxml2-utils \
+          lzop pngcrush rsync schedtool \
+          squashfs-tools xsltproc zip zlib1g-dev \
+          ccache
+
+    # =====================================================
+    # Initialize TWRP source (Android 12 base)
+    # =====================================================
     - name: Initialize TWRP source
       run: |
         mkdir -p twrp
         cd twrp
         repo init -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-12.1
-        
-    - name: Sync source code
+
+    # =====================================================
+    # Sync source code
+    # =====================================================
+    - name: Sync source
       run: |
         cd twrp
-        repo sync -c -j4 --force-sync --no-clone-bundle --optimized-fetch
-        
+        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --optimized-fetch
+
+    # =====================================================
+    # Copy device tree
+    # =====================================================
     - name: Copy device tree
       run: |
         mkdir -p twrp/device/realme/RE5C6CL1
         cp -r device/realme/RE5C6CL1/* twrp/device/realme/RE5C6CL1/
-        
-    - name: Download kernel from Google Drive
+
+    # =====================================================
+    # Download prebuilt kernel
+    # =====================================================
+    - name: Download kernel
       run: |
         cd twrp/device/realme/RE5C6CL1
-        
-        # Install gdown
-        pip3 install gdown
-        
-        # Download your kernel (67MB)
+        pip3 install --user gdown
+
         echo "Downloading kernel..."
         gdown "https://drive.google.com/uc?id=1jZHwXptEP2YjM0PBDsbXNyPyRG3bkVuW" -O kernel
-        
-        # Verify
-        if [ -f "kernel" ]; then
-          echo "✅ Kernel downloaded: $(ls -lh kernel)"
-        else
-          echo "❌ Kernel download failed"
-          # Create dummy kernel for testing
-          dd if=/dev/zero of=kernel bs=1M count=10
-        fi
-        
-    - name: Pre-build fixes
-      run: |
-        cd twrp
-        
-        # Create necessary directories to prevent errors
-        mkdir -p out/target/product/RE5C6CL1/root/vendor
-        mkdir -p out/target/product/RE5C6CL1/recovery/root/vendor
-        
-    - name: Build TWRP
-      run: |
-        cd twrp
-        
-        # Critical environment variables
-        export ALLOW_MISSING_DEPENDENCIES=true
-        export LC_ALL=C
-        
-        # Setup environment
-        source build/envsetup.sh
-        
-        # Select device
-        lunch twrp_RE5C6CL1-eng
-        
-        echo "=== Building TWRP ==="
-        
-        # Build with single thread first (more stable)
-        make vendorbootimage -j1 2>&1 | tee build.log
-        
-        # Check if successful
-        if [ ${PIPESTATUS[0]} -eq 0 ] && [ -f "out/target/product/RE5C6CL1/recovery.img" ]; then
-          echo "✅ BUILD SUCCESS!"
-        else
-          echo "⚠️  First attempt failed, trying with more threads..."
-          make recoveryimage -j$(nproc --all) 2>&1 | tee -a build.log
-        fi
-        
-    - name: Verify build
-      run: |
-        cd twrp
-        
-        if [ -f "out/target/product/RE5C6CL1/recovery.img" ]; then
-          echo "🎉 TWRP BUILD COMPLETE!"
-          echo "Size: $(ls -lh out/target/product/RE5C6CL1/recovery.img)"
-          echo "Type: $(file out/target/product/RE5C6CL1/recovery.img 2>/dev/null || echo 'Android recovery image')"
-        else
-          echo "❌ Build failed - no recovery image"
-          echo "Checking for errors..."
-          tail -100 build.log | grep -i "error\|failed" || true
+
+        if [ ! -s kernel ]; then
+          echo "❌ Kernel download failed or empty"
           exit 1
         fi
-        
-    - name: Upload TWRP
+
+        chmod +x kernel
+        ls -lh kernel
+
+    # =====================================================
+    # Build TWRP vendor_boot (Android 14)
+    # =====================================================
+    - name: Build vendor_boot
+      run: |
+        cd twrp
+
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export LC_ALL=C
+
+        source build/envsetup.sh
+        lunch twrp_RE5C6CL1-eng
+
+        echo "=== Building TWRP vendor_boot (Android 14) ==="
+        make vendorbootimage -j$(nproc --all) 2>&1 | tee build.log
+
+        if [ ! -f "out/target/product/RE5C6CL1/vendor_boot.img" ]; then
+          echo "❌ vendor_boot.img not generated"
+          exit 1
+        fi
+
+        echo "✅ vendor_boot.img built successfully"
+        ls -lh out/target/product/RE5C6CL1/vendor_boot.img
+
+    # =====================================================
+    # Verify output
+    # =====================================================
+    - name: Verify vendor_boot
+      run: |
+        cd twrp
+
+        file out/target/product/RE5C6CL1/vendor_boot.img || true
+
+        echo "Checking for TWRP strings..."
+        strings out/target/product/RE5C6CL1/vendor_boot.img | grep -i "twrp\|teamwin\|recovery" || true
+
+    # =====================================================
+    # Upload artifact
+    # =====================================================
+    - name: Upload TWRP vendor_boot
       uses: actions/upload-artifact@v4
       with:
-        name: TWRP-Realme-11x-5G
-        path: twrp/out/target/product/RE5C6CL1/recovery.img
-        
-    - name: Upload logs
+        name: TWRP-vendor_boot-Realme-11x-5G
+        path: twrp/out/target/product/RE5C6CL1/vendor_boot.img
+
+    # =====================================================
+    # Upload logs if build fails
+    # =====================================================
+    - name: Upload build logs
       if: failure()
       uses: actions/upload-artifact@v4
       with:
