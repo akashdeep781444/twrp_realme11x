@@ -1,17 +1,20 @@
-# Android fstab file.
-# The filesystem that contains the filesystem checker binary (typically /system) cannot
-# specify MF_CHECK, and must come before any filesystems that do specify MF_CHECK
+# Logical partitions
+system        /system        erofs   ro,logical,slotselect
+vendor        /vendor        erofs   ro,logical,slotselect
+product       /product       erofs   ro,logical,slotselect
+system_ext    /system_ext    erofs   ro,logical,slotselect
+odm           /odm           erofs   ro,logical,slotselect
+vendor_dlkm   /vendor_dlkm   erofs   ro,logical,slotselect
+odm_dlkm      /odm_dlkm      erofs   ro,logical,slotselect
+system_dlkm   /system_dlkm   erofs   ro,logical,slotselect
 
-#<src>                                          <mnt_point>         <type>    <mnt_flags and options>                       <fs_mgr_flags>
-/dev/block/by-name/boot                         /boot               emmc      defaults                                      defaults
-/dev/block/by-name/system                       /system             ext4      ro,barrier=1,discard                          wait,avb
-/dev/block/by-name/userdata                     /data               f2fs      noatime,nosuid,nodev                          wait,check,formattable,quota,resize
-/dev/block/by-name/cache                        /cache              ext4      noatime,nosuid,nodev,errors=panic             wait,check
-/dev/block/by-name/persist                      /persist            ext4      noatime,nosuid,nodev                          wait,check
-/dev/block/by-name/metadata                     /metadata           ext4      noatime,nosuid,nodev                          wait,check
-/dev/block/by-name/misc                         /misc               emmc      defaults                                      defaults
-/dev/block/by-name/vendor                       /vendor             ext4      ro,barrier=1                                  wait,avb
+# Metadata (required)
+ /dev/block/by-name/metadata  /metadata  f2fs  rw
 
-# Storage
-/devices/platform/soc/*/mmc_host*auto*          /storage/sdcard1    vfat      nosuid,nodev                                  wait,voldmanaged=sdcard1:auto,encryptable=userdata
-/devices/platform/soc/*/mmc_host*auto*          /storage/usbotg     vfat      nosuid,nodev                                  wait,voldmanaged=usbotg:auto
+# Data (FBE v2)
+ /dev/block/by-name/userdata  /data  f2fs  rw,quota,formattable,encryptable=footer,wrappedkey,keydirectory=/metadata/vold/metadata_encryption
+
+# Boot partitions
+ /dev/block/by-name/boot         /boot         emmc  defaults
+ /dev/block/by-name/vendor_boot  /vendor_boot  emmc  defaults
+ /dev/block/by-name/dtbo         /dtbo         emmc  defaults
