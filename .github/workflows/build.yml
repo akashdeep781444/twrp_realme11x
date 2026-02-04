@@ -50,12 +50,11 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: vendor_boot_RE5C6CL1
-        path: out/target/product/RE5C6CL1/vendor_boot.img        cd twrp
-
-        file out/target/product/RE5C6CL1/vendor_boot.img || true
-
-        echo "Checking for TWRP strings..."
-        strings out/target/product/RE5C6CL1/vendor_boot.img | grep -i "twrp\|teamwin\|recovery" || true
+        path: out/target/product/RE5C6CL1/vendor_boot.img
+            cd twrp        
+            file out/target/product/RE5C6CL1/vendor_boot.img || true     
+            echo "Checking for TWRP strings..."
+            strings out/target/product/RE5C6CL1/vendor_boot.img | grep -i "twrp\|teamwin\|recovery" || true
 
     # =====================================================
     # Upload artifact
