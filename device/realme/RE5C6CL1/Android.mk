@@ -1,5 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 
-ifeq ($(TARGET_DEVICE),RE5C6CL1)
-include $(call all-makefiles-under,$(LOCAL_PATH))
-endif
+include $(CLEAR_VARS)
+LOCAL_MODULE := init.recovery.mt6835.rc
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)
+LOCAL_SRC_FILES := init.recovery.mt6835.rc
+include $(BUILD_PREBUILT)
