@@ -36,7 +36,7 @@ jobs:
 
     - name: Clone device tree
       run: |
-        rm -rf device/realme/RE5C6CL1
+        mkdir -p device/realme
         git clone https://github.com/akashdeep781444/twrp_realme11x device/realme/RE5C6CL1
 
     - name: Build vendor_boot
